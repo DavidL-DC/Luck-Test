@@ -61,6 +61,8 @@ class Texts:
         f"Wähle eine Zahl von {LUCKY_NUMBER_MIN} bis {LUCKY_NUMBER_MAX}."
     )
     DRAW_BUTTON = "Zahl ziehen"
+    NEXT_GAME_BUTTON = "Weiter"
+    SHOW_RESULT_BUTTON = "Ergebnis anzeigen"
     SELECTED_NUMBER = "Gewählt: {number}"
     DRAWN_NUMBER = "Gezogen: {number}"
     DIFFERENCE = "Differenz: {difference}"
@@ -74,6 +76,7 @@ class Texts:
     LUCK_SCORE_LABEL = "Luck Score"
     SELECTED_SIDE_STATUS = "Gewählt: {side}"
     HITS_DETAIL = "{hits} von {total_rounds} Treffern"
+    COIN_DONE_STATUS = "{hits} von {total_rounds} Treffern"
     PERCENT_VALUE = "{score:.1f}%"
     LUCK_SCORE_VALUE = "{score:.1f}/10"
     RESTART_BUTTON = "Nochmal"
@@ -208,6 +211,7 @@ class CoinTossScreen(BaseScreen):
         self._choice_buttons: list[ctk.CTkButton] = []
         self._toss_labels: list[ctk.CTkLabel] = []
         self._status_label: ctk.CTkLabel | None = None
+        self._next_button: ctk.CTkButton | None = None
         self._build()
 
     def _build(self) -> None:
@@ -229,6 +233,12 @@ class CoinTossScreen(BaseScreen):
 
         self._status_label = create_body_label(content, Texts.TOSS_PLACEHOLDER)
         self._status_label.pack()
+
+        self._next_button = create_primary_button(
+            content,
+            Texts.NEXT_GAME_BUTTON,
+            self._show_next_game,
+        )
 
     def _add_choice_buttons(self, master: ctk.CTkFrame) -> None:
         heads_button = self._create_choice_button(master, CoinSide.HEADS)
@@ -286,7 +296,7 @@ class CoinTossScreen(BaseScreen):
             return
 
         if self._revealed_tosses >= self._result.total_rounds:
-            self.after(TOSS_REVEAL_DELAY_MS, self._show_next_game)
+            self._show_continue_button()
             return
 
         toss = self._result.tosses[self._revealed_tosses]
@@ -306,6 +316,18 @@ class CoinTossScreen(BaseScreen):
         if self._result is not None:
             self._on_complete(self._result)
 
+    def _show_continue_button(self) -> None:
+        if self._result is None or self._next_button is None:
+            return
+
+        self._update_status(
+            Texts.COIN_DONE_STATUS.format(
+                hits=self._result.hits,
+                total_rounds=self._result.total_rounds,
+            )
+        )
+        self._next_button.pack(pady=(SPACING_MEDIUM, 0))
+
     def _update_status(self, text: str) -> None:
         if self._status_label is not None:
             self._status_label.configure(text=text)
@@ -323,7 +345,10 @@ class LuckyNumberScreen(BaseScreen):
         self._selected_value = ctk.StringVar(value=str(options[0]))
         self._number_options = [str(option) for option in options]
         self._result_labels: list[ctk.CTkLabel] = []
+        self._selector: ctk.CTkOptionMenu | None = None
         self._draw_button: ctk.CTkButton | None = None
+        self._next_button: ctk.CTkButton | None = None
+        self._result: LuckyNumberResult | None = None
         self._build()
 
     def _build(self) -> None:
@@ -335,7 +360,7 @@ class LuckyNumberScreen(BaseScreen):
         subtitle = create_body_label(content, Texts.LUCKY_SUBTITLE)
         subtitle.pack(pady=(0, SPACING_LARGE))
 
-        selector = ctk.CTkOptionMenu(
+        self._selector = ctk.CTkOptionMenu(
             content,
             values=self._number_options,
             variable=self._selected_value,
@@ -347,7 +372,7 @@ class LuckyNumberScreen(BaseScreen):
             button_hover_color=Colors.PRIMARY_HOVER,
             text_color=Colors.WHITE,
         )
-        selector.pack(pady=(0, SPACING_MEDIUM))
+        self._selector.pack(pady=(0, SPACING_MEDIUM))
 
         self._draw_button = create_primary_button(
             content,
@@ -360,6 +385,12 @@ class LuckyNumberScreen(BaseScreen):
         result_frame.pack()
         self._create_result_labels(result_frame)
 
+        self._next_button = create_primary_button(
+            content,
+            Texts.SHOW_RESULT_BUTTON,
+            self._show_result_screen,
+        )
+
     def _create_result_labels(self, master: ctk.CTkFrame) -> None:
         for _ in range(4):
             label = create_body_label(master, "")
@@ -371,9 +402,17 @@ class LuckyNumberScreen(BaseScreen):
             self._draw_button.configure(state="disabled")
 
         selected_number = int(self._selected_value.get())
-        result = self.master.play_lucky_number(selected_number)
-        self._show_result(result)
-        self.after(TOSS_REVEAL_DELAY_MS * 4, lambda: self._on_complete(result))
+        self._result = self.master.play_lucky_number(selected_number)
+        self._hide_input_controls()
+        self._show_result(self._result)
+        self._show_continue_button()
+
+    def _hide_input_controls(self) -> None:
+        if self._selector is not None:
+            self._selector.pack_forget()
+
+        if self._draw_button is not None:
+            self._draw_button.pack_forget()
 
     def _show_result(self, result: LuckyNumberResult) -> None:
         texts = [
@@ -385,6 +424,14 @@ class LuckyNumberScreen(BaseScreen):
 
         for label, text in zip(self._result_labels, texts, strict=True):
             label.configure(text=text)
+
+    def _show_continue_button(self) -> None:
+        if self._next_button is not None:
+            self._next_button.pack(pady=(SPACING_MEDIUM, 0))
+
+    def _show_result_screen(self) -> None:
+        if self._result is not None:
+            self._on_complete(self._result)
 
 
 class ResultScreen(BaseScreen):
