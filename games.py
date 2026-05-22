@@ -1,11 +1,16 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from random import choice
+from random import choice, randint
 from typing import Protocol
 
 
 COIN_TOSS_COUNT = 10
 PERCENT_MULTIPLIER = 100
+LUCKY_NUMBER_MIN = 1
+LUCKY_NUMBER_MAX = 20
+LUCKY_NUMBER_MAX_POINTS = 100
+LUCKY_NUMBER_POINT_STEP = 20
+LUCKY_NUMBER_ZERO_LIMIT = 5
 
 
 class CoinSide(StrEnum):
@@ -14,7 +19,7 @@ class CoinSide(StrEnum):
 
 
 @dataclass(frozen=True)
-class GameResult:
+class CoinTossResult:
     name: str
     score: float
     hits: int
@@ -23,14 +28,17 @@ class GameResult:
     tosses: list[CoinSide]
 
 
+@dataclass(frozen=True)
+class LuckyNumberResult:
+    name: str
+    score: float
+    selected_number: int
+    drawn_number: int
+    difference: int
+
+
 class MiniGame(Protocol):
     name: str
-
-    def start(self) -> None:
-        ...
-
-    def get_result(self) -> GameResult | None:
-        ...
 
 
 class LuckGameRegistry:
@@ -50,12 +58,12 @@ class CoinTossGame:
     def __init__(self, toss_count: int = COIN_TOSS_COUNT) -> None:
         self._toss_count = toss_count
 
-    def play(self, selected_side: CoinSide) -> GameResult:
+    def play(self, selected_side: CoinSide) -> CoinTossResult:
         tosses = [self._toss_coin() for _ in range(self._toss_count)]
         hits = sum(toss == selected_side for toss in tosses)
         score = self._calculate_points(hits)
 
-        return GameResult(
+        return CoinTossResult(
             name=self.name,
             score=score,
             hits=hits,
@@ -69,3 +77,38 @@ class CoinTossGame:
 
     def _calculate_points(self, hits: int) -> float:
         return round(hits / self._toss_count * PERCENT_MULTIPLIER, 1)
+
+
+class LuckyNumberGame:
+    name = "Glückszahl"
+
+    def __init__(
+        self,
+        min_number: int = LUCKY_NUMBER_MIN,
+        max_number: int = LUCKY_NUMBER_MAX,
+    ) -> None:
+        self._min_number = min_number
+        self._max_number = max_number
+
+    def play(self, selected_number: int) -> LuckyNumberResult:
+        drawn_number = randint(self._min_number, self._max_number)
+        difference = abs(selected_number - drawn_number)
+        score = self._calculate_points(difference)
+
+        return LuckyNumberResult(
+            name=self.name,
+            score=score,
+            selected_number=selected_number,
+            drawn_number=drawn_number,
+            difference=difference,
+        )
+
+    def get_options(self) -> list[int]:
+        return list(range(self._min_number, self._max_number + 1))
+
+    def _calculate_points(self, difference: int) -> float:
+        if difference >= LUCKY_NUMBER_ZERO_LIMIT:
+            return 0.0
+
+        points = LUCKY_NUMBER_MAX_POINTS - difference * LUCKY_NUMBER_POINT_STEP
+        return float(points)

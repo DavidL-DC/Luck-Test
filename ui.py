@@ -2,20 +2,33 @@ from collections.abc import Callable
 
 import customtkinter as ctk
 
-from games import COIN_TOSS_COUNT, CoinSide, CoinTossGame, GameResult
-from scoring import calculate_luck_score, get_result_message
+from games import (
+    COIN_TOSS_COUNT,
+    LUCKY_NUMBER_MAX,
+    LUCKY_NUMBER_MIN,
+    CoinSide,
+    CoinTossGame,
+    CoinTossResult,
+    LuckyNumberGame,
+    LuckyNumberResult,
+)
+from scoring import (
+    calculate_average_score,
+    calculate_luck_score,
+    get_result_message,
+)
 
 
 APP_TITLE = "Luck Meter"
 WINDOW_SIZE = "420x420"
 WINDOW_MIN_SIZE = 420
 SCREEN_PADDING_X = 40
-DEFAULT_SCREEN_PADDING_Y = 40
-RESULT_SCREEN_PADDING_Y = 36
+DEFAULT_SCREEN_PADDING_Y = 38
+RESULT_SCREEN_PADDING_Y = 30
 SPACING_TINY = 4
 SPACING_SMALL = 8
-SPACING_MEDIUM = 16
-SPACING_LARGE = 28
+SPACING_MEDIUM = 14
+SPACING_LARGE = 24
 CONTENT_WIDTH = 320
 TOSS_REVEAL_DELAY_MS = 180
 TOSS_COLUMNS = 5
@@ -29,26 +42,36 @@ TOSS_LABEL_WIDTH = 46
 TOSS_LABEL_HEIGHT = 34
 TITLE_FONT_SIZE = 36
 GAME_TITLE_FONT_SIZE = 24
-RESULT_TITLE_FONT_SIZE = 28
+RESULT_TITLE_FONT_SIZE = 26
 BODY_FONT_SIZE = 14
 BUTTON_FONT_SIZE = 14
-RESULT_MESSAGE_FONT_SIZE = 15
-SCORE_FONT_SIZE = 30
+RESULT_MESSAGE_FONT_SIZE = 14
+SCORE_FONT_SIZE = 26
+SMALL_SCORE_FONT_SIZE = 20
 
 
 class Texts:
     APP_TITLE = "Luck Meter"
     START_SUBTITLE = "Teste dein Glück in kurzen Mini-Spielen."
     START_BUTTON = "Start"
-    GAME_TITLE = "Münzwurf-Serie"
-    GAME_SUBTITLE = "Wähle eine Seite. Danach fallen 10 Münzen."
-    HEADS_BUTTON = "Kopf"
-    TAILS_BUTTON = "Zahl"
+    COIN_TITLE = "Münzwurf-Serie"
+    COIN_SUBTITLE = "Wähle eine Seite. Danach fallen 10 Münzen."
+    LUCKY_TITLE = "Glückszahl"
+    LUCKY_SUBTITLE = (
+        f"Wähle eine Zahl von {LUCKY_NUMBER_MIN} bis {LUCKY_NUMBER_MAX}."
+    )
+    DRAW_BUTTON = "Zahl ziehen"
+    SELECTED_NUMBER = "Gewählt: {number}"
+    DRAWN_NUMBER = "Gezogen: {number}"
+    DIFFERENCE = "Differenz: {difference}"
+    GAME_POINTS = "Punkte: {score:.1f}%"
     TOSS_PLACEHOLDER = "Bereit"
     TOSS_UNKNOWN = "?"
     RESULT_TITLE = "Ergebnis"
-    POINTS_LABEL = "Punkte"
-    LUCK_SCORE_LABEL = "Vorläufiger Luck Score"
+    COIN_SCORE_LABEL = "Münzwurf-Serie"
+    LUCKY_SCORE_LABEL = "Glückszahl"
+    AVERAGE_LABEL = "Durchschnitt"
+    LUCK_SCORE_LABEL = "Luck Score"
     SELECTED_SIDE_STATUS = "Gewählt: {side}"
     HITS_DETAIL = "{hits} von {total_rounds} Treffern"
     PERCENT_VALUE = "{score:.1f}%"
@@ -83,25 +106,54 @@ class LuckMeterApp(ctk.CTk):
 
         self._active_frame: ctk.CTkFrame | None = None
         self._coin_game = CoinTossGame()
+        self._lucky_number_game = LuckyNumberGame()
+        self._coin_result: CoinTossResult | None = None
+        self._lucky_result: LuckyNumberResult | None = None
         self.configure(fg_color=Colors.BACKGROUND)
 
     def show_start_screen(self) -> None:
+        self._coin_result = None
+        self._lucky_result = None
         self._set_screen(StartScreen(self, on_start=self.show_coin_toss_screen))
 
     def show_coin_toss_screen(self) -> None:
-        self._set_screen(CoinTossScreen(self, on_result=self.show_result_screen))
+        self._coin_result = None
+        self._lucky_result = None
+        screen = CoinTossScreen(
+            self,
+            on_complete=self.show_lucky_number_screen,
+        )
+        self._set_screen(screen)
 
-    def show_result_screen(self, result: GameResult) -> None:
+    def show_lucky_number_screen(self, coin_result: CoinTossResult) -> None:
+        self._coin_result = coin_result
+        screen = LuckyNumberScreen(
+            self,
+            options=self._lucky_number_game.get_options(),
+            on_complete=self.show_result_screen,
+        )
+        self._set_screen(screen)
+
+    def show_result_screen(self, lucky_result: LuckyNumberResult) -> None:
+        if self._coin_result is None:
+            self.show_start_screen()
+            return
+
+        self._lucky_result = lucky_result
         screen = ResultScreen(
             self,
-            result=result,
+            coin_result=self._coin_result,
+            lucky_result=lucky_result,
             on_restart=self.show_coin_toss_screen,
             on_home=self.show_start_screen,
         )
         self._set_screen(screen)
 
-    def play_coin_toss(self, selected_side: CoinSide) -> GameResult:
+    def play_coin_toss(self, selected_side: CoinSide) -> CoinTossResult:
         return self._coin_game.play(selected_side)
+
+    def play_lucky_number(self, selected_number: int) -> LuckyNumberResult:
+        return self._lucky_number_game.play(selected_number)
 
     def _set_screen(self, frame: ctk.CTkFrame) -> None:
         if self._active_frame is not None:
@@ -147,11 +199,11 @@ class CoinTossScreen(BaseScreen):
     def __init__(
         self,
         master: LuckMeterApp,
-        on_result: Callable[[GameResult], None],
+        on_complete: Callable[[CoinTossResult], None],
     ) -> None:
         super().__init__(master)
-        self._on_result = on_result
-        self._result: GameResult | None = None
+        self._on_complete = on_complete
+        self._result: CoinTossResult | None = None
         self._revealed_tosses = 0
         self._choice_buttons: list[ctk.CTkButton] = []
         self._toss_labels: list[ctk.CTkLabel] = []
@@ -161,10 +213,10 @@ class CoinTossScreen(BaseScreen):
     def _build(self) -> None:
         content = create_content_frame(self)
 
-        title = create_title(content, Texts.GAME_TITLE, size=GAME_TITLE_FONT_SIZE)
+        title = create_title(content, Texts.COIN_TITLE, size=GAME_TITLE_FONT_SIZE)
         title.pack(pady=(0, SPACING_SMALL))
 
-        subtitle = create_body_label(content, Texts.GAME_SUBTITLE)
+        subtitle = create_body_label(content, Texts.COIN_SUBTITLE)
         subtitle.pack(pady=(0, SPACING_MEDIUM))
 
         button_frame = ctk.CTkFrame(content, fg_color="transparent")
@@ -208,7 +260,7 @@ class CoinTossScreen(BaseScreen):
                 corner_radius=BUTTON_CORNER_RADIUS,
                 fg_color=Colors.SURFACE,
                 text_color=Colors.TEXT_DIM,
-                font=ctk.CTkFont(size=14, weight="bold"),
+                font=ctk.CTkFont(size=BODY_FONT_SIZE, weight="bold"),
             )
             label.grid(
                 row=index // TOSS_COLUMNS,
@@ -234,7 +286,7 @@ class CoinTossScreen(BaseScreen):
             return
 
         if self._revealed_tosses >= self._result.total_rounds:
-            self.after(TOSS_REVEAL_DELAY_MS, self._show_result)
+            self.after(TOSS_REVEAL_DELAY_MS, self._show_next_game)
             return
 
         toss = self._result.tosses[self._revealed_tosses]
@@ -250,28 +302,107 @@ class CoinTossScreen(BaseScreen):
             text_color=Colors.TEXT,
         )
 
-    def _show_result(self) -> None:
+    def _show_next_game(self) -> None:
         if self._result is not None:
-            self._on_result(self._result)
+            self._on_complete(self._result)
 
     def _update_status(self, text: str) -> None:
         if self._status_label is not None:
             self._status_label.configure(text=text)
 
 
+class LuckyNumberScreen(BaseScreen):
+    def __init__(
+        self,
+        master: LuckMeterApp,
+        options: list[int],
+        on_complete: Callable[[LuckyNumberResult], None],
+    ) -> None:
+        super().__init__(master)
+        self._on_complete = on_complete
+        self._selected_value = ctk.StringVar(value=str(options[0]))
+        self._number_options = [str(option) for option in options]
+        self._result_labels: list[ctk.CTkLabel] = []
+        self._draw_button: ctk.CTkButton | None = None
+        self._build()
+
+    def _build(self) -> None:
+        content = create_content_frame(self)
+
+        title = create_title(content, Texts.LUCKY_TITLE, size=GAME_TITLE_FONT_SIZE)
+        title.pack(pady=(0, SPACING_SMALL))
+
+        subtitle = create_body_label(content, Texts.LUCKY_SUBTITLE)
+        subtitle.pack(pady=(0, SPACING_LARGE))
+
+        selector = ctk.CTkOptionMenu(
+            content,
+            values=self._number_options,
+            variable=self._selected_value,
+            width=PRIMARY_BUTTON_WIDTH,
+            height=PRIMARY_BUTTON_HEIGHT,
+            corner_radius=BUTTON_CORNER_RADIUS,
+            fg_color=Colors.SURFACE_LIGHT,
+            button_color=Colors.PRIMARY,
+            button_hover_color=Colors.PRIMARY_HOVER,
+            text_color=Colors.WHITE,
+        )
+        selector.pack(pady=(0, SPACING_MEDIUM))
+
+        self._draw_button = create_primary_button(
+            content,
+            Texts.DRAW_BUTTON,
+            self._play_game,
+        )
+        self._draw_button.pack(pady=(0, SPACING_LARGE))
+
+        result_frame = ctk.CTkFrame(content, fg_color="transparent")
+        result_frame.pack()
+        self._create_result_labels(result_frame)
+
+    def _create_result_labels(self, master: ctk.CTkFrame) -> None:
+        for _ in range(4):
+            label = create_body_label(master, "")
+            label.pack(pady=(0, SPACING_SMALL))
+            self._result_labels.append(label)
+
+    def _play_game(self) -> None:
+        if self._draw_button is not None:
+            self._draw_button.configure(state="disabled")
+
+        selected_number = int(self._selected_value.get())
+        result = self.master.play_lucky_number(selected_number)
+        self._show_result(result)
+        self.after(TOSS_REVEAL_DELAY_MS * 4, lambda: self._on_complete(result))
+
+    def _show_result(self, result: LuckyNumberResult) -> None:
+        texts = [
+            Texts.SELECTED_NUMBER.format(number=result.selected_number),
+            Texts.DRAWN_NUMBER.format(number=result.drawn_number),
+            Texts.DIFFERENCE.format(difference=result.difference),
+            Texts.GAME_POINTS.format(score=result.score),
+        ]
+
+        for label, text in zip(self._result_labels, texts, strict=True):
+            label.configure(text=text)
+
+
 class ResultScreen(BaseScreen):
     def __init__(
         self,
         master: LuckMeterApp,
-        result: GameResult,
+        coin_result: CoinTossResult,
+        lucky_result: LuckyNumberResult,
         on_restart: Callable[[], None],
         on_home: Callable[[], None],
     ) -> None:
         super().__init__(master)
-        self._result = result
+        self._coin_result = coin_result
+        self._lucky_result = lucky_result
         self._on_restart = on_restart
         self._on_home = on_home
-        self._luck_score = calculate_luck_score(result.score)
+        self._average_score = calculate_average_score(self._get_game_scores())
+        self._luck_score = calculate_luck_score(self._average_score)
         self._build()
 
     def _build(self) -> None:
@@ -282,23 +413,25 @@ class ResultScreen(BaseScreen):
 
         self._create_score_line(
             content,
-            Texts.POINTS_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._result.score),
+            Texts.COIN_SCORE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._coin_result.score),
+        )
+        self._create_score_line(
+            content,
+            Texts.LUCKY_SCORE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._lucky_result.score),
+        )
+        self._create_score_line(
+            content,
+            Texts.AVERAGE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._average_score),
         )
         self._create_score_line(
             content,
             Texts.LUCK_SCORE_LABEL,
             Texts.LUCK_SCORE_VALUE.format(score=self._luck_score),
+            large=True,
         )
-
-        detail = create_body_label(
-            content,
-            Texts.HITS_DETAIL.format(
-                hits=self._result.hits,
-                total_rounds=self._result.total_rounds,
-            ),
-        )
-        detail.pack(pady=(SPACING_SMALL, SPACING_MEDIUM))
 
         message = ctk.CTkLabel(
             content,
@@ -307,7 +440,7 @@ class ResultScreen(BaseScreen):
             text_color=Colors.TEXT,
             wraplength=CONTENT_WIDTH,
         )
-        message.pack(pady=(0, SPACING_LARGE))
+        message.pack(pady=(SPACING_SMALL, SPACING_MEDIUM))
 
         restart_button = create_secondary_button(
             content,
@@ -323,22 +456,30 @@ class ResultScreen(BaseScreen):
         )
         home_button.pack()
 
+    def _get_game_scores(self) -> list[float]:
+        return [self._coin_result.score, self._lucky_result.score]
+
     def _create_score_line(
         self,
         master: ctk.CTkFrame,
         label_text: str,
         value_text: str,
+        large: bool = False,
     ) -> None:
-        label = create_body_label(master, label_text)
-        label.pack()
+        row = ctk.CTkFrame(master, fg_color="transparent")
+        row.pack(fill="x", pady=(0, SPACING_SMALL))
 
+        label = create_body_label(row, label_text)
+        label.pack(side="left")
+
+        font_size = SCORE_FONT_SIZE if large else SMALL_SCORE_FONT_SIZE
         value = ctk.CTkLabel(
-            master,
+            row,
             text=value_text,
-            font=ctk.CTkFont(size=SCORE_FONT_SIZE, weight="bold"),
+            font=ctk.CTkFont(size=font_size, weight="bold"),
             text_color=Colors.TEXT,
         )
-        value.pack(pady=(0, SPACING_SMALL))
+        value.pack(side="right")
 
 
 def create_content_frame(

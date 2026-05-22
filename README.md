@@ -1,8 +1,8 @@
 # Luck Meter
 
 Luck Meter ist eine Desktop-App für einen interaktiven Glückstest.
-Die App startet mit einer Münzwurf-Serie und zeigt danach einen vorläufigen
-Luck Score von 0 bis 10.
+Die App startet mit einer Münzwurf-Serie, führt danach durch das
+Glückszahl-Spiel und zeigt am Ende einen Luck Score von 0 bis 10.
 
 ## Setup
 
@@ -35,7 +35,7 @@ luck_test/
 
 ## Geplante Features
 
-- Vollständiger Ablauf: Startscreen, Münzwurf-Serie, Ergebnis-Screen
+- Vollständiger Ablauf: Startscreen, Münzwurf-Serie, Glückszahl, Ergebnis-Screen
 - Mehrere kurze Mini-Spiele
 - Interaktive Auswertung pro Spiel
 - Finaler Glücks-Score von 0 bis 10
