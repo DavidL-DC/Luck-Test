@@ -1,7 +1,7 @@
 # Luck Meter
 
-Luck Meter ist eine Desktop-App fuer einen spaeteren interaktiven Glueckstest.
-Mehrere Mini-Spiele sollen am Ende zu einem Gluecks-Score von 0 bis 10 fuehren.
+Luck Meter ist eine Desktop-App für einen späteren interaktiven Glückstest.
+Mehrere Mini-Spiele sollen am Ende zu einem Glücks-Score von 0 bis 10 führen.
 
 ## Setup
 
@@ -25,10 +25,10 @@ python main.py
 luck_test/
 ├── main.py       # Einstiegspunkt der App
 ├── ui.py         # CustomTkinter UI und Screens
-├── games.py      # Platzhalter fuer Mini-Spiel-Architektur
-├── scoring.py    # Berechnung des finalen Gluecks-Scores
+├── games.py      # Platzhalter für Mini-Spiel-Architektur
+├── scoring.py    # Berechnung des finalen Glücks-Scores
 ├── README.md     # Projektdokumentation
-├── AGENTS.md     # Entwicklungsregeln fuer Codex
+├── AGENTS.md     # Entwicklungsregeln für Codex
 └── .gitignore    # Ignorierte lokale Dateien
 ```
 
@@ -36,7 +36,7 @@ luck_test/
 
 - Mehrere kurze Mini-Spiele
 - Interaktive Auswertung pro Spiel
-- Finaler Gluecks-Score von 0 bis 10
+- Finaler Glücks-Score von 0 bis 10
 - Minimalistische quadratische Desktop-UI
 - Dezente, performante Animationen
 - Saubere Trennung zwischen UI, Spiellogik und Scoring

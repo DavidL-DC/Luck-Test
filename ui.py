@@ -67,7 +67,7 @@ class StartScreen(BaseScreen):
 
         subtitle = ctk.CTkLabel(
             content,
-            text="Teste dein Glueck in kurzen Mini-Spielen.",
+            text="Teste dein Glück in kurzen Mini-Spielen.",
             font=ctk.CTkFont(size=14),
             text_color="#a8b0bd",
             wraplength=CONTENT_WIDTH,
@@ -109,7 +109,7 @@ class PlaceholderScreen(BaseScreen):
 
         message = ctk.CTkLabel(
             content,
-            text="Hier startet spaeter der interaktive Glueckstest.",
+            text="Hier startet später der interaktive Glückstest.",
             font=ctk.CTkFont(size=14),
             text_color="#a8b0bd",
             wraplength=CONTENT_WIDTH,
@@ -118,7 +118,7 @@ class PlaceholderScreen(BaseScreen):
 
         back_button = ctk.CTkButton(
             content,
-            text="Zurueck",
+            text="Zurück",
             command=self._on_back,
             width=140,
             height=40,
