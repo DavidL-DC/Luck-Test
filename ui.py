@@ -13,6 +13,8 @@ from games import (
     CoinTossResult,
     LuckyNumberGame,
     LuckyNumberResult,
+    RiskWheelGame,
+    RiskWheelResult,
     TreasureChest,
     TreasureChestGame,
     TreasureChestResult,
@@ -55,6 +57,8 @@ SCORE_FONT_SIZE = 26
 SMALL_SCORE_FONT_SIZE = 20
 TREASURE_BUTTON_WIDTH = 86
 TREASURE_BUTTON_HEIGHT = 44
+WHEEL_SPIN_STEPS = 8
+WHEEL_SPIN_DELAY_MS = 90
 
 
 class Texts:
@@ -71,6 +75,11 @@ class Texts:
     TREASURE_SUBTITLE = f"Öffne genau {TREASURE_OPEN_COUNT} Kisten."
     CHEST_CLOSED = "Kiste"
     TREASURE_STATUS = "{opened} von {required} Kisten geöffnet"
+    RISK_TITLE = "Risiko-Rad"
+    RISK_SUBTITLE = "Drehe das Rad und nimm, was kommt."
+    SPIN_BUTTON = "Rad drehen"
+    SPINNING_TEXTS = ("Mega-Glück", "Glück", "Neutral", "Pech")
+    RISK_RESULT = "{outcome}"
     DRAW_BUTTON = "Zahl ziehen"
     NEXT_GAME_BUTTON = "Weiter"
     SHOW_RESULT_BUTTON = "Ergebnis anzeigen"
@@ -84,6 +93,7 @@ class Texts:
     COIN_SCORE_LABEL = "Münzwurf-Serie"
     LUCKY_SCORE_LABEL = "Glückszahl"
     TREASURE_SCORE_LABEL = "Schatzkisten"
+    RISK_SCORE_LABEL = "Risiko-Rad"
     AVERAGE_LABEL = "Durchschnitt"
     LUCK_SCORE_LABEL = "Luck Score"
     SELECTED_SIDE_STATUS = "Gewählt: {side}"
@@ -123,21 +133,25 @@ class LuckMeterApp(ctk.CTk):
         self._coin_game = CoinTossGame()
         self._lucky_number_game = LuckyNumberGame()
         self._treasure_chest_game = TreasureChestGame()
+        self._risk_wheel_game = RiskWheelGame()
         self._coin_result: CoinTossResult | None = None
         self._lucky_result: LuckyNumberResult | None = None
         self._treasure_result: TreasureChestResult | None = None
+        self._risk_result: RiskWheelResult | None = None
         self.configure(fg_color=Colors.BACKGROUND)
 
     def show_start_screen(self) -> None:
         self._coin_result = None
         self._lucky_result = None
         self._treasure_result = None
+        self._risk_result = None
         self._set_screen(StartScreen(self, on_start=self.show_coin_toss_screen))
 
     def show_coin_toss_screen(self) -> None:
         self._coin_result = None
         self._lucky_result = None
         self._treasure_result = None
+        self._risk_result = None
         screen = CoinTossScreen(
             self,
             on_complete=self.show_lucky_number_screen,
@@ -162,21 +176,39 @@ class LuckMeterApp(ctk.CTk):
         screen = TreasureChestScreen(
             self,
             chests=self._treasure_chest_game.create_chests(),
-            on_complete=self.show_result_screen,
+            on_complete=self.show_risk_wheel_screen,
         )
         self._set_screen(screen)
 
-    def show_result_screen(self, treasure_result: TreasureChestResult) -> None:
+    def show_risk_wheel_screen(self, treasure_result: TreasureChestResult) -> None:
         if self._coin_result is None or self._lucky_result is None:
             self.show_start_screen()
             return
 
         self._treasure_result = treasure_result
+        screen = RiskWheelScreen(
+            self,
+            on_complete=self.show_result_screen,
+        )
+        self._set_screen(screen)
+
+    def show_result_screen(self, risk_result: RiskWheelResult) -> None:
+        missing_result = (
+            self._coin_result is None
+            or self._lucky_result is None
+            or self._treasure_result is None
+        )
+        if missing_result:
+            self.show_start_screen()
+            return
+
+        self._risk_result = risk_result
         screen = ResultScreen(
             self,
             coin_result=self._coin_result,
             lucky_result=self._lucky_result,
-            treasure_result=treasure_result,
+            treasure_result=self._treasure_result,
+            risk_result=risk_result,
             on_restart=self.show_coin_toss_screen,
             on_home=self.show_start_screen,
         )
@@ -193,6 +225,9 @@ class LuckMeterApp(ctk.CTk):
         opened_chests: list[TreasureChest],
     ) -> TreasureChestResult:
         return self._treasure_chest_game.score_opened_chests(opened_chests)
+
+    def spin_risk_wheel(self) -> RiskWheelResult:
+        return self._risk_wheel_game.spin()
 
     def _set_screen(self, frame: ctk.CTkFrame) -> None:
         if self._active_frame is not None:
@@ -573,6 +608,101 @@ class TreasureChestScreen(BaseScreen):
         )
 
 
+class RiskWheelScreen(BaseScreen):
+    def __init__(
+        self,
+        master: LuckMeterApp,
+        on_complete: Callable[[RiskWheelResult], None],
+    ) -> None:
+        super().__init__(master)
+        self._on_complete = on_complete
+        self._result: RiskWheelResult | None = None
+        self._spin_button: ctk.CTkButton | None = None
+        self._next_button: ctk.CTkButton | None = None
+        self._outcome_label: ctk.CTkLabel | None = None
+        self._points_label: ctk.CTkLabel | None = None
+        self._spin_step = 0
+        self._build()
+
+    def _build(self) -> None:
+        content = create_content_frame(self)
+
+        title = create_title(content, Texts.RISK_TITLE, size=GAME_TITLE_FONT_SIZE)
+        title.pack(pady=(0, SPACING_SMALL))
+
+        subtitle = create_body_label(content, Texts.RISK_SUBTITLE)
+        subtitle.pack(pady=(0, SPACING_LARGE))
+
+        self._outcome_label = ctk.CTkLabel(
+            content,
+            text="?",
+            width=220,
+            height=72,
+            corner_radius=BUTTON_CORNER_RADIUS,
+            fg_color=Colors.SURFACE,
+            text_color=Colors.TEXT,
+            font=ctk.CTkFont(size=24, weight="bold"),
+        )
+        self._outcome_label.pack(pady=(0, SPACING_MEDIUM))
+
+        self._points_label = create_body_label(content, "")
+        self._points_label.pack(pady=(0, SPACING_LARGE))
+
+        self._spin_button = create_primary_button(
+            content,
+            Texts.SPIN_BUTTON,
+            self._start_spin,
+        )
+        self._spin_button.pack()
+
+        self._next_button = create_primary_button(
+            content,
+            Texts.SHOW_RESULT_BUTTON,
+            self._show_result_screen,
+        )
+
+    def _start_spin(self) -> None:
+        if self._spin_button is not None:
+            self._spin_button.configure(state="disabled")
+
+        self._result = self.master.spin_risk_wheel()
+        self._spin_step = 0
+        self._animate_spin()
+
+    def _animate_spin(self) -> None:
+        if self._spin_step >= WHEEL_SPIN_STEPS:
+            self._show_spin_result()
+            return
+
+        text_index = self._spin_step % len(Texts.SPINNING_TEXTS)
+        self._set_outcome_text(Texts.SPINNING_TEXTS[text_index])
+        self._spin_step += 1
+        self.after(WHEEL_SPIN_DELAY_MS, self._animate_spin)
+
+    def _show_spin_result(self) -> None:
+        if self._result is None:
+            return
+
+        self._set_outcome_text(
+            Texts.RISK_RESULT.format(outcome=self._result.outcome.label)
+        )
+        if self._points_label is not None:
+            self._points_label.configure(
+                text=Texts.GAME_POINTS.format(score=self._result.score)
+            )
+
+        if self._next_button is not None:
+            self._next_button.pack(pady=(SPACING_MEDIUM, 0))
+
+    def _set_outcome_text(self, text: str) -> None:
+        if self._outcome_label is not None:
+            self._outcome_label.configure(text=text)
+
+    def _show_result_screen(self) -> None:
+        if self._result is not None:
+            self._on_complete(self._result)
+
+
 class ResultScreen(BaseScreen):
     def __init__(
         self,
@@ -580,6 +710,7 @@ class ResultScreen(BaseScreen):
         coin_result: CoinTossResult,
         lucky_result: LuckyNumberResult,
         treasure_result: TreasureChestResult,
+        risk_result: RiskWheelResult,
         on_restart: Callable[[], None],
         on_home: Callable[[], None],
     ) -> None:
@@ -587,6 +718,7 @@ class ResultScreen(BaseScreen):
         self._coin_result = coin_result
         self._lucky_result = lucky_result
         self._treasure_result = treasure_result
+        self._risk_result = risk_result
         self._on_restart = on_restart
         self._on_home = on_home
         self._average_score = calculate_average_score(self._get_game_scores())
@@ -613,6 +745,11 @@ class ResultScreen(BaseScreen):
             content,
             Texts.TREASURE_SCORE_LABEL,
             Texts.PERCENT_VALUE.format(score=self._treasure_result.score),
+        )
+        self._create_score_line(
+            content,
+            Texts.RISK_SCORE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._risk_result.score),
         )
         self._create_score_line(
             content,
@@ -654,6 +791,7 @@ class ResultScreen(BaseScreen):
             self._coin_result.score,
             self._lucky_result.score,
             self._treasure_result.score,
+            self._risk_result.score,
         ]
 
     def _create_score_line(

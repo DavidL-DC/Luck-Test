@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from random import choice, randint, shuffle
+from random import choice, choices, randint, shuffle
 from typing import Protocol
 
 
@@ -19,6 +19,12 @@ TREASURE_DISTRIBUTION = (
     ("Großes Glück", 60, 2),
     ("Kleines Glück", 30, 3),
     ("Niete", 0, 3),
+)
+RISK_WHEEL_OUTCOMES = (
+    ("Mega-Glück", 100, 10),
+    ("Glück", 70, 25),
+    ("Neutral", 40, 40),
+    ("Pech", 0, 25),
 )
 
 
@@ -58,6 +64,19 @@ class TreasureChestResult:
     score: float
     opened_chests: list[TreasureChest]
     opened_count: int
+
+
+@dataclass(frozen=True)
+class RiskWheelOutcome:
+    label: str
+    points: int
+
+
+@dataclass(frozen=True)
+class RiskWheelResult:
+    name: str
+    score: float
+    outcome: RiskWheelOutcome
 
 
 class MiniGame(Protocol):
@@ -161,4 +180,22 @@ class TreasureChestGame:
             score=score,
             opened_chests=opened_chests,
             opened_count=len(opened_chests),
+        )
+
+
+class RiskWheelGame:
+    name = "Risiko-Rad"
+
+    def spin(self) -> RiskWheelResult:
+        outcomes = [
+            RiskWheelOutcome(label=label, points=points)
+            for label, points, _weight in RISK_WHEEL_OUTCOMES
+        ]
+        weights = [weight for _label, _points, weight in RISK_WHEEL_OUTCOMES]
+        outcome = choices(outcomes, weights=weights, k=1)[0]
+
+        return RiskWheelResult(
+            name=self.name,
+            score=float(outcome.points),
+            outcome=outcome,
         )
