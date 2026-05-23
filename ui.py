@@ -6,11 +6,16 @@ from games import (
     COIN_TOSS_COUNT,
     LUCKY_NUMBER_MAX,
     LUCKY_NUMBER_MIN,
+    TREASURE_GRID_SIZE,
+    TREASURE_OPEN_COUNT,
     CoinSide,
     CoinTossGame,
     CoinTossResult,
     LuckyNumberGame,
     LuckyNumberResult,
+    TreasureChest,
+    TreasureChestGame,
+    TreasureChestResult,
 )
 from scoring import (
     calculate_average_score,
@@ -48,6 +53,8 @@ BUTTON_FONT_SIZE = 14
 RESULT_MESSAGE_FONT_SIZE = 14
 SCORE_FONT_SIZE = 26
 SMALL_SCORE_FONT_SIZE = 20
+TREASURE_BUTTON_WIDTH = 86
+TREASURE_BUTTON_HEIGHT = 44
 
 
 class Texts:
@@ -60,6 +67,10 @@ class Texts:
     LUCKY_SUBTITLE = (
         f"Wähle eine Zahl von {LUCKY_NUMBER_MIN} bis {LUCKY_NUMBER_MAX}."
     )
+    TREASURE_TITLE = "Schatzkisten"
+    TREASURE_SUBTITLE = f"Öffne genau {TREASURE_OPEN_COUNT} Kisten."
+    CHEST_CLOSED = "Kiste"
+    TREASURE_STATUS = "{opened} von {required} Kisten geöffnet"
     DRAW_BUTTON = "Zahl ziehen"
     NEXT_GAME_BUTTON = "Weiter"
     SHOW_RESULT_BUTTON = "Ergebnis anzeigen"
@@ -72,6 +83,7 @@ class Texts:
     RESULT_TITLE = "Ergebnis"
     COIN_SCORE_LABEL = "Münzwurf-Serie"
     LUCKY_SCORE_LABEL = "Glückszahl"
+    TREASURE_SCORE_LABEL = "Schatzkisten"
     AVERAGE_LABEL = "Durchschnitt"
     LUCK_SCORE_LABEL = "Luck Score"
     SELECTED_SIDE_STATUS = "Gewählt: {side}"
@@ -110,18 +122,22 @@ class LuckMeterApp(ctk.CTk):
         self._active_frame: ctk.CTkFrame | None = None
         self._coin_game = CoinTossGame()
         self._lucky_number_game = LuckyNumberGame()
+        self._treasure_chest_game = TreasureChestGame()
         self._coin_result: CoinTossResult | None = None
         self._lucky_result: LuckyNumberResult | None = None
+        self._treasure_result: TreasureChestResult | None = None
         self.configure(fg_color=Colors.BACKGROUND)
 
     def show_start_screen(self) -> None:
         self._coin_result = None
         self._lucky_result = None
+        self._treasure_result = None
         self._set_screen(StartScreen(self, on_start=self.show_coin_toss_screen))
 
     def show_coin_toss_screen(self) -> None:
         self._coin_result = None
         self._lucky_result = None
+        self._treasure_result = None
         screen = CoinTossScreen(
             self,
             on_complete=self.show_lucky_number_screen,
@@ -133,20 +149,34 @@ class LuckMeterApp(ctk.CTk):
         screen = LuckyNumberScreen(
             self,
             options=self._lucky_number_game.get_options(),
-            on_complete=self.show_result_screen,
+            on_complete=self.show_treasure_chest_screen,
         )
         self._set_screen(screen)
 
-    def show_result_screen(self, lucky_result: LuckyNumberResult) -> None:
+    def show_treasure_chest_screen(self, lucky_result: LuckyNumberResult) -> None:
         if self._coin_result is None:
             self.show_start_screen()
             return
 
         self._lucky_result = lucky_result
+        screen = TreasureChestScreen(
+            self,
+            chests=self._treasure_chest_game.create_chests(),
+            on_complete=self.show_result_screen,
+        )
+        self._set_screen(screen)
+
+    def show_result_screen(self, treasure_result: TreasureChestResult) -> None:
+        if self._coin_result is None or self._lucky_result is None:
+            self.show_start_screen()
+            return
+
+        self._treasure_result = treasure_result
         screen = ResultScreen(
             self,
             coin_result=self._coin_result,
-            lucky_result=lucky_result,
+            lucky_result=self._lucky_result,
+            treasure_result=treasure_result,
             on_restart=self.show_coin_toss_screen,
             on_home=self.show_start_screen,
         )
@@ -157,6 +187,12 @@ class LuckMeterApp(ctk.CTk):
 
     def play_lucky_number(self, selected_number: int) -> LuckyNumberResult:
         return self._lucky_number_game.play(selected_number)
+
+    def score_treasure_chests(
+        self,
+        opened_chests: list[TreasureChest],
+    ) -> TreasureChestResult:
+        return self._treasure_chest_game.score_opened_chests(opened_chests)
 
     def _set_screen(self, frame: ctk.CTkFrame) -> None:
         if self._active_frame is not None:
@@ -387,7 +423,7 @@ class LuckyNumberScreen(BaseScreen):
 
         self._next_button = create_primary_button(
             content,
-            Texts.SHOW_RESULT_BUTTON,
+            Texts.NEXT_GAME_BUTTON,
             self._show_result_screen,
         )
 
@@ -434,18 +470,123 @@ class LuckyNumberScreen(BaseScreen):
             self._on_complete(self._result)
 
 
+class TreasureChestScreen(BaseScreen):
+    def __init__(
+        self,
+        master: LuckMeterApp,
+        chests: list[TreasureChest],
+        on_complete: Callable[[TreasureChestResult], None],
+    ) -> None:
+        super().__init__(master)
+        self._chests = chests
+        self._on_complete = on_complete
+        self._opened_indices: list[int] = []
+        self._chest_buttons: list[ctk.CTkButton] = []
+        self._status_label: ctk.CTkLabel | None = None
+        self._next_button: ctk.CTkButton | None = None
+        self._result: TreasureChestResult | None = None
+        self._build()
+
+    def _build(self) -> None:
+        content = create_content_frame(self, padding_y=RESULT_SCREEN_PADDING_Y)
+
+        title = create_title(content, Texts.TREASURE_TITLE, size=GAME_TITLE_FONT_SIZE)
+        title.pack(pady=(0, SPACING_SMALL))
+
+        subtitle = create_body_label(content, Texts.TREASURE_SUBTITLE)
+        subtitle.pack(pady=(0, SPACING_MEDIUM))
+
+        grid = ctk.CTkFrame(content, fg_color="transparent")
+        grid.pack(pady=(0, SPACING_MEDIUM))
+        self._create_chest_buttons(grid)
+
+        self._status_label = create_body_label(content, self._get_status_text())
+        self._status_label.pack()
+
+        self._next_button = create_primary_button(
+            content,
+            Texts.SHOW_RESULT_BUTTON,
+            self._show_result_screen,
+        )
+
+    def _create_chest_buttons(self, master: ctk.CTkFrame) -> None:
+        for index, _chest in enumerate(self._chests):
+            button = create_secondary_button(
+                master,
+                Texts.CHEST_CLOSED,
+                lambda chest_index=index: self._open_chest(chest_index),
+                width=TREASURE_BUTTON_WIDTH,
+                height=TREASURE_BUTTON_HEIGHT,
+            )
+            button.grid(
+                row=index // TREASURE_GRID_SIZE,
+                column=index % TREASURE_GRID_SIZE,
+                padx=SPACING_TINY,
+                pady=SPACING_TINY,
+            )
+            self._chest_buttons.append(button)
+
+    def _open_chest(self, index: int) -> None:
+        if self._result is not None or index in self._opened_indices:
+            return
+
+        self._opened_indices.append(index)
+        chest = self._chests[index]
+        button = self._chest_buttons[index]
+        button.configure(
+            text=f"{chest.label}\n{chest.points}",
+            state="disabled",
+            fg_color=Colors.SURFACE_LIGHT,
+        )
+        self._update_status()
+
+        if len(self._opened_indices) == TREASURE_OPEN_COUNT:
+            self._finish_game()
+
+    def _finish_game(self) -> None:
+        opened_chests = [self._chests[index] for index in self._opened_indices]
+        self._result = self.master.score_treasure_chests(opened_chests)
+        self._disable_closed_chests()
+        self._show_continue_button()
+
+    def _disable_closed_chests(self) -> None:
+        for index, button in enumerate(self._chest_buttons):
+            if index not in self._opened_indices:
+                button.configure(state="disabled")
+
+    def _show_continue_button(self) -> None:
+        if self._next_button is not None:
+            self._next_button.pack(pady=(SPACING_MEDIUM, 0))
+
+    def _show_result_screen(self) -> None:
+        if self._result is not None:
+            self._on_complete(self._result)
+
+    def _update_status(self) -> None:
+        if self._status_label is not None:
+            self._status_label.configure(text=self._get_status_text())
+
+    def _get_status_text(self) -> str:
+        return Texts.TREASURE_STATUS.format(
+            opened=len(self._opened_indices),
+            required=TREASURE_OPEN_COUNT,
+        )
+
+
 class ResultScreen(BaseScreen):
     def __init__(
         self,
         master: LuckMeterApp,
         coin_result: CoinTossResult,
         lucky_result: LuckyNumberResult,
+        treasure_result: TreasureChestResult,
         on_restart: Callable[[], None],
         on_home: Callable[[], None],
     ) -> None:
         super().__init__(master)
         self._coin_result = coin_result
         self._lucky_result = lucky_result
+        self._treasure_result = treasure_result
         self._on_restart = on_restart
         self._on_home = on_home
         self._average_score = calculate_average_score(self._get_game_scores())
@@ -467,6 +608,11 @@ class ResultScreen(BaseScreen):
             content,
             Texts.LUCKY_SCORE_LABEL,
             Texts.PERCENT_VALUE.format(score=self._lucky_result.score),
+        )
+        self._create_score_line(
+            content,
+            Texts.TREASURE_SCORE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._treasure_result.score),
         )
         self._create_score_line(
             content,
@@ -504,7 +650,11 @@ class ResultScreen(BaseScreen):
         home_button.pack()
 
     def _get_game_scores(self) -> list[float]:
-        return [self._coin_result.score, self._lucky_result.score]
+        return [
+            self._coin_result.score,
+            self._lucky_result.score,
+            self._treasure_result.score,
+        ]
 
     def _create_score_line(
         self,
@@ -583,13 +733,15 @@ def create_secondary_button(
     master: ctk.CTkFrame,
     text: str,
     command: Callable[[], None],
+    width: int = PRIMARY_BUTTON_WIDTH,
+    height: int = PRIMARY_BUTTON_HEIGHT,
 ) -> ctk.CTkButton:
     return create_button(
         master,
         text,
         command,
-        PRIMARY_BUTTON_WIDTH,
-        PRIMARY_BUTTON_HEIGHT,
+        width,
+        height,
         Colors.SURFACE_LIGHT,
         Colors.SURFACE_HOVER,
     )

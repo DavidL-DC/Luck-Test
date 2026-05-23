@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from random import choice, randint
+from random import choice, randint, shuffle
 from typing import Protocol
 
 
@@ -11,6 +11,15 @@ LUCKY_NUMBER_MAX = 20
 LUCKY_NUMBER_MAX_POINTS = 100
 LUCKY_NUMBER_POINT_STEP = 20
 LUCKY_NUMBER_ZERO_LIMIT = 5
+TREASURE_GRID_SIZE = 3
+TREASURE_OPEN_COUNT = 3
+TREASURE_MAX_POINTS = 100
+TREASURE_DISTRIBUTION = (
+    ("Jackpot", 100, 1),
+    ("Großes Glück", 60, 2),
+    ("Kleines Glück", 30, 3),
+    ("Niete", 0, 3),
+)
 
 
 class CoinSide(StrEnum):
@@ -35,6 +44,20 @@ class LuckyNumberResult:
     selected_number: int
     drawn_number: int
     difference: int
+
+
+@dataclass(frozen=True)
+class TreasureChest:
+    label: str
+    points: int
+
+
+@dataclass(frozen=True)
+class TreasureChestResult:
+    name: str
+    score: float
+    opened_chests: list[TreasureChest]
+    opened_count: int
 
 
 class MiniGame(Protocol):
@@ -112,3 +135,30 @@ class LuckyNumberGame:
 
         points = LUCKY_NUMBER_MAX_POINTS - difference * LUCKY_NUMBER_POINT_STEP
         return float(points)
+
+
+class TreasureChestGame:
+    name = "Schatzkisten"
+
+    def create_chests(self) -> list[TreasureChest]:
+        chests = [
+            TreasureChest(label=label, points=points)
+            for label, points, amount in TREASURE_DISTRIBUTION
+            for _ in range(amount)
+        ]
+        shuffle(chests)
+        return chests
+
+    def score_opened_chests(
+        self,
+        opened_chests: list[TreasureChest],
+    ) -> TreasureChestResult:
+        total_points = sum(chest.points for chest in opened_chests)
+        score = min(float(TREASURE_MAX_POINTS), float(total_points))
+
+        return TreasureChestResult(
+            name=self.name,
+            score=score,
+            opened_chests=opened_chests,
+            opened_count=len(opened_chests),
+        )
