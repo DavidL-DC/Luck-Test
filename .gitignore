@@ -13,6 +13,12 @@ build/
 dist/
 *.spec
 
+# Icon source files
+assets/
+
+# Windows version metadata
+version_info.txt
+
 # macOS
 .DS_Store
 
