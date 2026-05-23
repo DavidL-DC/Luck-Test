@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from datetime import datetime
+import tkinter as tk
 
 import customtkinter as ctk
 
@@ -25,6 +27,7 @@ from games import (
 from scoring import (
     calculate_average_score,
     calculate_luck_score,
+    get_score_color,
     get_result_message,
 )
 
@@ -59,6 +62,20 @@ BUTTON_FONT_SIZE = 14
 RESULT_MESSAGE_FONT_SIZE = 14
 SCORE_FONT_SIZE = 22
 SMALL_SCORE_FONT_SIZE = 17
+RING_SIZE = 154
+RING_WIDTH = 14
+RING_PADDING = 12
+RING_ANIMATION_STEPS = 45
+RING_ANIMATION_DELAY_MS = 16
+WEEKDAYS = (
+    "Montag",
+    "Dienstag",
+    "Mittwoch",
+    "Donnerstag",
+    "Freitag",
+    "Samstag",
+    "Sonntag",
+)
 TREASURE_BUTTON_WIDTH = 86
 TREASURE_BUTTON_HEIGHT = 44
 WHEEL_SPIN_STEPS = 8
@@ -104,6 +121,7 @@ class Texts:
     TOSS_PLACEHOLDER = "Bereit"
     TOSS_UNKNOWN = "?"
     RESULT_TITLE = "Ergebnis"
+    RESULT_DATE = "{weekday}, {date} · {time}"
     COIN_SCORE_LABEL = "Münzwurf-Serie"
     LUCKY_SCORE_LABEL = "Glückszahl"
     TREASURE_SCORE_LABEL = "Schatzkisten"
@@ -916,50 +934,22 @@ class ResultScreen(BaseScreen):
         self._on_home = on_home
         self._average_score = calculate_average_score(self._get_game_scores())
         self._luck_score = calculate_luck_score(self._average_score)
+        self._score_color = get_score_color(self._luck_score)
+        self._ring_canvas: tk.Canvas | None = None
+        self._ring_arc: int | None = None
+        self._ring_text: int | None = None
         self._build()
 
     def _build(self) -> None:
         content = create_content_frame(self, padding_y=RESULT_SCREEN_PADDING_Y)
 
         title = create_title(content, Texts.RESULT_TITLE, size=RESULT_TITLE_FONT_SIZE)
-        title.pack(pady=(0, SPACING_MEDIUM))
+        title.pack(pady=(0, SPACING_TINY))
 
-        self._create_score_line(
-            content,
-            Texts.COIN_SCORE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._coin_result.score),
-        )
-        self._create_score_line(
-            content,
-            Texts.LUCKY_SCORE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._lucky_result.score),
-        )
-        self._create_score_line(
-            content,
-            Texts.TREASURE_SCORE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._treasure_result.score),
-        )
-        self._create_score_line(
-            content,
-            Texts.RISK_SCORE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._risk_result.score),
-        )
-        self._create_score_line(
-            content,
-            Texts.DICE_SCORE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._dice_result.score),
-        )
-        self._create_score_line(
-            content,
-            Texts.AVERAGE_LABEL,
-            Texts.PERCENT_VALUE.format(score=self._average_score),
-        )
-        self._create_score_line(
-            content,
-            Texts.LUCK_SCORE_LABEL,
-            Texts.LUCK_SCORE_VALUE.format(score=self._luck_score),
-            large=True,
-        )
+        date_label = create_body_label(content, self._get_date_text())
+        date_label.pack(pady=(0, SPACING_SMALL))
+
+        self._create_score_ring(content)
 
         message = ctk.CTkLabel(
             content,
@@ -970,19 +960,27 @@ class ResultScreen(BaseScreen):
         )
         message.pack(pady=(SPACING_SMALL, SPACING_MEDIUM))
 
+        self._create_score_grid(content)
+
+        button_row = ctk.CTkFrame(content, fg_color="transparent")
+        button_row.pack(pady=(SPACING_MEDIUM, 0))
         restart_button = create_secondary_button(
-            content,
+            button_row,
             Texts.RESTART_BUTTON,
             self._on_restart,
+            width=136,
         )
-        restart_button.pack(pady=(0, SPACING_SMALL))
+        restart_button.pack(side="left", padx=(0, SPACING_SMALL))
 
         home_button = create_primary_button(
-            content,
+            button_row,
             Texts.HOME_BUTTON,
             self._on_home,
+            width=136,
         )
-        home_button.pack()
+        home_button.pack(side="left", padx=(SPACING_SMALL, 0))
+
+        self.after(RING_ANIMATION_DELAY_MS, self._animate_ring)
 
     def _get_game_scores(self) -> list[float]:
         return [
@@ -993,27 +991,124 @@ class ResultScreen(BaseScreen):
             self._dice_result.score,
         ]
 
-    def _create_score_line(
+    def _create_score_ring(self, master: ctk.CTkFrame) -> None:
+        self._ring_canvas = tk.Canvas(
+            master,
+            width=RING_SIZE,
+            height=RING_SIZE,
+            bg=Colors.BACKGROUND,
+            highlightthickness=0,
+        )
+        self._ring_canvas.pack(pady=(0, SPACING_SMALL))
+
+        ring_bounds = (
+            RING_PADDING,
+            RING_PADDING,
+            RING_SIZE - RING_PADDING,
+            RING_SIZE - RING_PADDING,
+        )
+        self._ring_canvas.create_oval(
+            ring_bounds,
+            outline=Colors.SURFACE_LIGHT,
+            width=RING_WIDTH,
+        )
+        self._ring_arc = self._ring_canvas.create_arc(
+            ring_bounds,
+            start=90,
+            extent=0,
+            style="arc",
+            outline=self._score_color,
+            width=RING_WIDTH,
+        )
+        self._ring_text = self._ring_canvas.create_text(
+            RING_SIZE // 2,
+            RING_SIZE // 2,
+            text=Texts.LUCK_SCORE_VALUE.format(score=0.0),
+            fill=Colors.TEXT,
+            font=("Segoe UI", SCORE_FONT_SIZE, "bold"),
+        )
+
+    def _animate_ring(self, step: int = 0) -> None:
+        if self._ring_canvas is None or self._ring_arc is None:
+            return
+
+        progress = min(1.0, step / RING_ANIMATION_STEPS)
+        shown_score = round(self._luck_score * progress, 1)
+        extent = -360 * (shown_score / 10)
+        self._ring_canvas.itemconfigure(self._ring_arc, extent=extent)
+
+        if self._ring_text is not None:
+            self._ring_canvas.itemconfigure(
+                self._ring_text,
+                text=Texts.LUCK_SCORE_VALUE.format(score=shown_score),
+            )
+
+        if step < RING_ANIMATION_STEPS:
+            self.after(
+                RING_ANIMATION_DELAY_MS,
+                lambda: self._animate_ring(step + 1),
+            )
+
+    def _create_score_grid(self, master: ctk.CTkFrame) -> None:
+        grid = ctk.CTkFrame(master, fg_color="transparent")
+        grid.pack(fill="x")
+
+        for index, score_item in enumerate(self._get_score_items()):
+            row = index // 2
+            column = index % 2
+            self._create_score_pill(grid, score_item).grid(
+                row=row,
+                column=column,
+                padx=SPACING_TINY,
+                pady=SPACING_TINY,
+                sticky="ew",
+            )
+
+        grid.grid_columnconfigure(0, weight=1)
+        grid.grid_columnconfigure(1, weight=1)
+
+    def _create_score_pill(
         self,
         master: ctk.CTkFrame,
-        label_text: str,
-        value_text: str,
-        large: bool = False,
-    ) -> None:
-        row = ctk.CTkFrame(master, fg_color="transparent")
-        row.pack(fill="x", pady=(0, SPACING_TINY))
+        score_item: tuple[str, float],
+    ) -> ctk.CTkFrame:
+        label_text, score = score_item
+        frame = ctk.CTkFrame(master, fg_color=Colors.SURFACE, corner_radius=8)
 
-        label = create_body_label(row, label_text)
-        label.pack(side="left")
+        label = ctk.CTkLabel(
+            frame,
+            text=label_text,
+            font=ctk.CTkFont(size=11),
+            text_color=Colors.TEXT_MUTED,
+        )
+        label.pack(pady=(SPACING_TINY, 0))
 
-        font_size = SCORE_FONT_SIZE if large else SMALL_SCORE_FONT_SIZE
         value = ctk.CTkLabel(
-            row,
-            text=value_text,
-            font=ctk.CTkFont(size=font_size, weight="bold"),
+            frame,
+            text=Texts.PERCENT_VALUE.format(score=score),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=Colors.TEXT,
         )
-        value.pack(side="right")
+        value.pack(pady=(0, SPACING_TINY))
+        return frame
+
+    def _get_score_items(self) -> list[tuple[str, float]]:
+        return [
+            (Texts.COIN_SCORE_LABEL, self._coin_result.score),
+            (Texts.LUCKY_SCORE_LABEL, self._lucky_result.score),
+            (Texts.TREASURE_SCORE_LABEL, self._treasure_result.score),
+            (Texts.RISK_SCORE_LABEL, self._risk_result.score),
+            (Texts.DICE_SCORE_LABEL, self._dice_result.score),
+            (Texts.AVERAGE_LABEL, self._average_score),
+        ]
+
+    def _get_date_text(self) -> str:
+        now = datetime.now()
+        return Texts.RESULT_DATE.format(
+            weekday=WEEKDAYS[now.weekday()],
+            date=now.strftime("%d.%m.%Y"),
+            time=now.strftime("%H:%M"),
+        )
 
 
 def create_content_frame(

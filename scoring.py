@@ -9,6 +9,11 @@ LOW_LUCK_MESSAGE = "Heute verfolgt dich das Pech."
 AVERAGE_LUCK_MESSAGE = "Durchschnittliches Glück."
 GOOD_LUCK_MESSAGE = "Das Glück ist auf deiner Seite."
 GREAT_LUCK_MESSAGE = "Heute könntest du den Jackpot knacken."
+SCORE_COLOR_RED = "#ef4444"
+SCORE_COLOR_ORANGE = "#f97316"
+SCORE_COLOR_YELLOW = "#eab308"
+SCORE_COLOR_GREEN = "#22c55e"
+SCORE_COLOR_GOLD = "#f5c542"
 
 
 def calculate_average_score(scores: list[float]) -> float:
@@ -47,3 +52,19 @@ def get_result_message(luck_score: float) -> str:
         return GOOD_LUCK_MESSAGE
 
     return GREAT_LUCK_MESSAGE
+
+
+def get_score_color(luck_score: float) -> str:
+    if luck_score <= 2:
+        return SCORE_COLOR_RED
+
+    if luck_score <= 4:
+        return SCORE_COLOR_ORANGE
+
+    if luck_score <= 6:
+        return SCORE_COLOR_YELLOW
+
+    if luck_score <= 8:
+        return SCORE_COLOR_GREEN
+
+    return SCORE_COLOR_GOLD
