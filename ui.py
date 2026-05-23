@@ -4,6 +4,7 @@ import customtkinter as ctk
 
 from games import (
     COIN_TOSS_COUNT,
+    DICE_ROLL_COUNT,
     LUCKY_NUMBER_MAX,
     LUCKY_NUMBER_MIN,
     TREASURE_GRID_SIZE,
@@ -11,6 +12,8 @@ from games import (
     CoinSide,
     CoinTossGame,
     CoinTossResult,
+    DiceGame,
+    DiceResult,
     LuckyNumberGame,
     LuckyNumberResult,
     RiskWheelGame,
@@ -27,11 +30,12 @@ from scoring import (
 
 
 APP_TITLE = "Luck Meter"
-WINDOW_SIZE = "420x420"
-WINDOW_MIN_SIZE = 420
+WINDOW_WIDTH = 460
+WINDOW_HEIGHT = 540
+WINDOW_SIZE = f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}"
 SCREEN_PADDING_X = 40
 DEFAULT_SCREEN_PADDING_Y = 38
-RESULT_SCREEN_PADDING_Y = 30
+RESULT_SCREEN_PADDING_Y = 22
 SPACING_TINY = 4
 SPACING_SMALL = 8
 SPACING_MEDIUM = 14
@@ -53,12 +57,16 @@ RESULT_TITLE_FONT_SIZE = 26
 BODY_FONT_SIZE = 14
 BUTTON_FONT_SIZE = 14
 RESULT_MESSAGE_FONT_SIZE = 14
-SCORE_FONT_SIZE = 26
-SMALL_SCORE_FONT_SIZE = 20
+SCORE_FONT_SIZE = 22
+SMALL_SCORE_FONT_SIZE = 17
 TREASURE_BUTTON_WIDTH = 86
 TREASURE_BUTTON_HEIGHT = 44
 WHEEL_SPIN_STEPS = 8
 WHEEL_SPIN_DELAY_MS = 90
+DICE_ANIMATION_STEPS = 5
+DICE_ANIMATION_DELAY_MS = 70
+DICE_BOX_WIDTH = 52
+DICE_BOX_HEIGHT = 52
 
 
 class Texts:
@@ -80,6 +88,12 @@ class Texts:
     SPIN_BUTTON = "Rad drehen"
     SPINNING_TEXTS = ("Mega-Glück", "Glück", "Neutral", "Pech")
     RISK_RESULT = "{outcome}"
+    DICE_TITLE = "Glückswürfel"
+    DICE_SUBTITLE = f"Würfle insgesamt {DICE_ROLL_COUNT}-mal."
+    ROLL_DICE_BUTTON = "Würfeln"
+    DICE_STATUS = "{rolled} von {required} Würfen"
+    DICE_UNKNOWN = "?"
+    DICE_DESCRIPTION = "{description}"
     DRAW_BUTTON = "Zahl ziehen"
     NEXT_GAME_BUTTON = "Weiter"
     SHOW_RESULT_BUTTON = "Ergebnis anzeigen"
@@ -94,6 +108,7 @@ class Texts:
     LUCKY_SCORE_LABEL = "Glückszahl"
     TREASURE_SCORE_LABEL = "Schatzkisten"
     RISK_SCORE_LABEL = "Risiko-Rad"
+    DICE_SCORE_LABEL = "Glückswürfel"
     AVERAGE_LABEL = "Durchschnitt"
     LUCK_SCORE_LABEL = "Luck Score"
     SELECTED_SIDE_STATUS = "Gewählt: {side}"
@@ -123,8 +138,9 @@ class LuckMeterApp(ctk.CTk):
         super().__init__()
         self.title(APP_TITLE)
         self.geometry(WINDOW_SIZE)
-        self.minsize(WINDOW_MIN_SIZE, WINDOW_MIN_SIZE)
-        self.maxsize(WINDOW_MIN_SIZE, WINDOW_MIN_SIZE)
+        self.minsize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.maxsize(WINDOW_WIDTH, WINDOW_HEIGHT)
+        self._center_window()
 
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
@@ -134,10 +150,12 @@ class LuckMeterApp(ctk.CTk):
         self._lucky_number_game = LuckyNumberGame()
         self._treasure_chest_game = TreasureChestGame()
         self._risk_wheel_game = RiskWheelGame()
+        self._dice_game = DiceGame()
         self._coin_result: CoinTossResult | None = None
         self._lucky_result: LuckyNumberResult | None = None
         self._treasure_result: TreasureChestResult | None = None
         self._risk_result: RiskWheelResult | None = None
+        self._dice_result: DiceResult | None = None
         self.configure(fg_color=Colors.BACKGROUND)
 
     def show_start_screen(self) -> None:
@@ -145,6 +163,7 @@ class LuckMeterApp(ctk.CTk):
         self._lucky_result = None
         self._treasure_result = None
         self._risk_result = None
+        self._dice_result = None
         self._set_screen(StartScreen(self, on_start=self.show_coin_toss_screen))
 
     def show_coin_toss_screen(self) -> None:
@@ -152,6 +171,7 @@ class LuckMeterApp(ctk.CTk):
         self._lucky_result = None
         self._treasure_result = None
         self._risk_result = None
+        self._dice_result = None
         screen = CoinTossScreen(
             self,
             on_complete=self.show_lucky_number_screen,
@@ -188,11 +208,11 @@ class LuckMeterApp(ctk.CTk):
         self._treasure_result = treasure_result
         screen = RiskWheelScreen(
             self,
-            on_complete=self.show_result_screen,
+            on_complete=self.show_dice_screen,
         )
         self._set_screen(screen)
 
-    def show_result_screen(self, risk_result: RiskWheelResult) -> None:
+    def show_dice_screen(self, risk_result: RiskWheelResult) -> None:
         missing_result = (
             self._coin_result is None
             or self._lucky_result is None
@@ -203,12 +223,31 @@ class LuckMeterApp(ctk.CTk):
             return
 
         self._risk_result = risk_result
+        screen = DiceScreen(
+            self,
+            on_complete=self.show_result_screen,
+        )
+        self._set_screen(screen)
+
+    def show_result_screen(self, dice_result: DiceResult) -> None:
+        missing_result = (
+            self._coin_result is None
+            or self._lucky_result is None
+            or self._treasure_result is None
+            or self._risk_result is None
+        )
+        if missing_result:
+            self.show_start_screen()
+            return
+
+        self._dice_result = dice_result
         screen = ResultScreen(
             self,
             coin_result=self._coin_result,
             lucky_result=self._lucky_result,
             treasure_result=self._treasure_result,
-            risk_result=risk_result,
+            risk_result=self._risk_result,
+            dice_result=dice_result,
             on_restart=self.show_coin_toss_screen,
             on_home=self.show_start_screen,
         )
@@ -229,12 +268,26 @@ class LuckMeterApp(ctk.CTk):
     def spin_risk_wheel(self) -> RiskWheelResult:
         return self._risk_wheel_game.spin()
 
+    def roll_die(self) -> int:
+        return self._dice_game.roll_die()
+
+    def score_dice_rolls(self, rolls: list[int]) -> DiceResult:
+        return self._dice_game.score_rolls(rolls)
+
     def _set_screen(self, frame: ctk.CTkFrame) -> None:
         if self._active_frame is not None:
             self._active_frame.destroy()
 
         self._active_frame = frame
         self._active_frame.pack(fill="both", expand=True)
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x_position = (screen_width - WINDOW_WIDTH) // 2
+        y_position = (screen_height - WINDOW_HEIGHT) // 2
+        self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x_position}+{y_position}")
 
 
 class BaseScreen(ctk.CTkFrame):
@@ -540,7 +593,7 @@ class TreasureChestScreen(BaseScreen):
 
         self._next_button = create_primary_button(
             content,
-            Texts.SHOW_RESULT_BUTTON,
+            Texts.NEXT_GAME_BUTTON,
             self._show_result_screen,
         )
 
@@ -657,7 +710,7 @@ class RiskWheelScreen(BaseScreen):
 
         self._next_button = create_primary_button(
             content,
-            Texts.SHOW_RESULT_BUTTON,
+            Texts.NEXT_GAME_BUTTON,
             self._show_result_screen,
         )
 
@@ -703,6 +756,144 @@ class RiskWheelScreen(BaseScreen):
             self._on_complete(self._result)
 
 
+class DiceScreen(BaseScreen):
+    def __init__(
+        self,
+        master: LuckMeterApp,
+        on_complete: Callable[[DiceResult], None],
+    ) -> None:
+        super().__init__(master)
+        self._on_complete = on_complete
+        self._rolls: list[int] = []
+        self._result: DiceResult | None = None
+        self._dice_labels: list[ctk.CTkLabel] = []
+        self._roll_button: ctk.CTkButton | None = None
+        self._next_button: ctk.CTkButton | None = None
+        self._status_label: ctk.CTkLabel | None = None
+        self._points_label: ctk.CTkLabel | None = None
+        self._animation_step = 0
+        self._current_label: ctk.CTkLabel | None = None
+        self._final_roll = 0
+        self._build()
+
+    def _build(self) -> None:
+        content = create_content_frame(self)
+
+        title = create_title(content, Texts.DICE_TITLE, size=GAME_TITLE_FONT_SIZE)
+        title.pack(pady=(0, SPACING_SMALL))
+
+        subtitle = create_body_label(content, Texts.DICE_SUBTITLE)
+        subtitle.pack(pady=(0, SPACING_LARGE))
+
+        dice_frame = ctk.CTkFrame(content, fg_color="transparent")
+        dice_frame.pack(pady=(0, SPACING_MEDIUM))
+        self._create_dice_labels(dice_frame)
+
+        self._status_label = create_body_label(content, self._get_status_text())
+        self._status_label.pack(pady=(0, SPACING_SMALL))
+
+        self._points_label = create_body_label(content, "")
+        self._points_label.pack(pady=(0, SPACING_MEDIUM))
+
+        self._roll_button = create_primary_button(
+            content,
+            Texts.ROLL_DICE_BUTTON,
+            self._start_roll,
+        )
+        self._roll_button.pack()
+
+        self._next_button = create_primary_button(
+            content,
+            Texts.SHOW_RESULT_BUTTON,
+            self._show_result_screen,
+        )
+
+    def _create_dice_labels(self, master: ctk.CTkFrame) -> None:
+        for index in range(DICE_ROLL_COUNT):
+            label = ctk.CTkLabel(
+                master,
+                text=Texts.DICE_UNKNOWN,
+                width=DICE_BOX_WIDTH,
+                height=DICE_BOX_HEIGHT,
+                corner_radius=BUTTON_CORNER_RADIUS,
+                fg_color=Colors.SURFACE,
+                text_color=Colors.TEXT,
+                font=ctk.CTkFont(size=24, weight="bold"),
+            )
+            label.grid(row=0, column=index, padx=SPACING_TINY)
+            self._dice_labels.append(label)
+
+    def _start_roll(self) -> None:
+        if self._roll_button is not None:
+            self._roll_button.configure(state="disabled")
+
+        self._final_roll = self.master.roll_die()
+        self._current_label = self._dice_labels[len(self._rolls)]
+        self._animation_step = 0
+        self._animate_roll()
+
+    def _animate_roll(self) -> None:
+        if self._current_label is None:
+            return
+
+        if self._animation_step >= DICE_ANIMATION_STEPS:
+            self._finish_roll()
+            return
+
+        preview_roll = self.master.roll_die()
+        self._current_label.configure(text=str(preview_roll))
+        self._animation_step += 1
+        self.after(DICE_ANIMATION_DELAY_MS, self._animate_roll)
+
+    def _finish_roll(self) -> None:
+        if self._current_label is None:
+            return
+
+        self._current_label.configure(
+            text=str(self._final_roll),
+            fg_color=Colors.SURFACE_LIGHT,
+        )
+        self._rolls.append(self._final_roll)
+        self._update_status()
+
+        if len(self._rolls) == DICE_ROLL_COUNT:
+            self._finish_game()
+            return
+
+        if self._roll_button is not None:
+            self._roll_button.configure(state="normal")
+
+    def _finish_game(self) -> None:
+        self._result = self.master.score_dice_rolls(self._rolls)
+        if self._points_label is not None:
+            description = Texts.DICE_DESCRIPTION.format(
+                description=self._result.description,
+            )
+            self._points_label.configure(
+                text=(
+                    f"{description}\n"
+                    f"{Texts.GAME_POINTS.format(score=self._result.score)}"
+                )
+            )
+
+        if self._next_button is not None:
+            self._next_button.pack(pady=(SPACING_MEDIUM, 0))
+
+    def _show_result_screen(self) -> None:
+        if self._result is not None:
+            self._on_complete(self._result)
+
+    def _update_status(self) -> None:
+        if self._status_label is not None:
+            self._status_label.configure(text=self._get_status_text())
+
+    def _get_status_text(self) -> str:
+        return Texts.DICE_STATUS.format(
+            rolled=len(self._rolls),
+            required=DICE_ROLL_COUNT,
+        )
+
+
 class ResultScreen(BaseScreen):
     def __init__(
         self,
@@ -711,6 +902,7 @@ class ResultScreen(BaseScreen):
         lucky_result: LuckyNumberResult,
         treasure_result: TreasureChestResult,
         risk_result: RiskWheelResult,
+        dice_result: DiceResult,
         on_restart: Callable[[], None],
         on_home: Callable[[], None],
     ) -> None:
@@ -719,6 +911,7 @@ class ResultScreen(BaseScreen):
         self._lucky_result = lucky_result
         self._treasure_result = treasure_result
         self._risk_result = risk_result
+        self._dice_result = dice_result
         self._on_restart = on_restart
         self._on_home = on_home
         self._average_score = calculate_average_score(self._get_game_scores())
@@ -750,6 +943,11 @@ class ResultScreen(BaseScreen):
             content,
             Texts.RISK_SCORE_LABEL,
             Texts.PERCENT_VALUE.format(score=self._risk_result.score),
+        )
+        self._create_score_line(
+            content,
+            Texts.DICE_SCORE_LABEL,
+            Texts.PERCENT_VALUE.format(score=self._dice_result.score),
         )
         self._create_score_line(
             content,
@@ -792,6 +990,7 @@ class ResultScreen(BaseScreen):
             self._lucky_result.score,
             self._treasure_result.score,
             self._risk_result.score,
+            self._dice_result.score,
         ]
 
     def _create_score_line(
@@ -802,7 +1001,7 @@ class ResultScreen(BaseScreen):
         large: bool = False,
     ) -> None:
         row = ctk.CTkFrame(master, fg_color="transparent")
-        row.pack(fill="x", pady=(0, SPACING_SMALL))
+        row.pack(fill="x", pady=(0, SPACING_TINY))
 
         label = create_body_label(row, label_text)
         label.pack(side="left")

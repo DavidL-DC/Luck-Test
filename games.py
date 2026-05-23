@@ -26,6 +26,14 @@ RISK_WHEEL_OUTCOMES = (
     ("Neutral", 40, 40),
     ("Pech", 0, 25),
 )
+DICE_ROLL_COUNT = 5
+DICE_MIN_VALUE = 1
+DICE_MAX_VALUE = 6
+DICE_THREE_OF_KIND_POINTS = 75
+DICE_FOUR_OF_KIND_POINTS = 90
+DICE_FIVE_OF_KIND_POINTS = 100
+DICE_SIX_BONUS = 20
+DICE_SIX_BONUS_MIN_COUNT = 3
 
 
 class CoinSide(StrEnum):
@@ -77,6 +85,14 @@ class RiskWheelResult:
     name: str
     score: float
     outcome: RiskWheelOutcome
+
+
+@dataclass(frozen=True)
+class DiceResult:
+    name: str
+    score: float
+    rolls: list[int]
+    description: str
 
 
 class MiniGame(Protocol):
@@ -198,4 +214,60 @@ class RiskWheelGame:
             name=self.name,
             score=float(outcome.points),
             outcome=outcome,
+        )
+
+
+class DiceGame:
+    name = "Glückswürfel"
+
+    def roll_die(self) -> int:
+        return randint(DICE_MIN_VALUE, DICE_MAX_VALUE)
+
+    def score_rolls(self, rolls: list[int]) -> DiceResult:
+        score, description = self._calculate_score(rolls)
+
+        return DiceResult(
+            name=self.name,
+            score=score,
+            rolls=rolls,
+            description=description,
+        )
+
+    def _calculate_score(self, rolls: list[int]) -> tuple[float, str]:
+        counts = [
+            rolls.count(value)
+            for value in range(DICE_MIN_VALUE, DICE_MAX_VALUE + 1)
+        ]
+        highest_count = max(counts)
+        six_count = rolls.count(DICE_MAX_VALUE)
+
+        if six_count == DICE_ROLL_COUNT:
+            return 100.0, "Jackpot: fünf Sechsen"
+
+        base_score, description = self._get_base_score(rolls, highest_count)
+        if six_count >= DICE_SIX_BONUS_MIN_COUNT:
+            base_score += DICE_SIX_BONUS
+            description = f"{description} + Sechser-Bonus"
+
+        return min(100.0, round(base_score, 1)), description
+
+    def _get_base_score(
+        self,
+        rolls: list[int],
+        highest_count: int,
+    ) -> tuple[float, str]:
+        if highest_count == DICE_ROLL_COUNT:
+            return float(DICE_FIVE_OF_KIND_POINTS), "Fünf gleiche Zahlen"
+
+        if highest_count == 4:
+            return float(DICE_FOUR_OF_KIND_POINTS), "Vier gleiche Zahlen"
+
+        if highest_count == 3:
+            return float(DICE_THREE_OF_KIND_POINTS), "Drei gleiche Zahlen"
+
+        average_roll = sum(rolls) / len(rolls)
+        score = (average_roll - DICE_MIN_VALUE) / (DICE_MAX_VALUE - DICE_MIN_VALUE)
+        return (
+            round(score * PERCENT_MULTIPLIER, 1),
+            f"Durchschnitt der Würfel: {average_roll:.1f}",
         )
